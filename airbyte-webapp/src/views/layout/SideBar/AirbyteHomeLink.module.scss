@@ -9,13 +9,16 @@
   gap: variables.$spacing-sm;
   border-bottom: 1px solid colors.$grey-100;
   padding: variables.$spacing-sm variables.$spacing-md;
-  height: variables.$height-breadcrumb;
+  
+  // height: variables.$height-breadcrumb;
 
   &__link {
     display: flex;
   }
 
   &__logo {
+    height:200px;
+    width:100%;
     color: colors.$dark-blue-900;
   }
 }

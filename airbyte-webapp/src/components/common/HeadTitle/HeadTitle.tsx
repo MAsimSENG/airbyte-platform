@@ -67,8 +67,8 @@ export const HeadTitle: React.FC<HeadTitleProps> = ({ titles }) => {
   }
 
   return (
-    <Helmet titleTemplate={`${AIRBYTE} ${SEPARATOR} %s`} defaultTitle={AIRBYTE}>
-      <title>{headTitle}</title>
+    <Helmet defaultTitle={AIRBYTE}>
+      <title>GyanBridge</title>
     </Helmet>
   );
 };
