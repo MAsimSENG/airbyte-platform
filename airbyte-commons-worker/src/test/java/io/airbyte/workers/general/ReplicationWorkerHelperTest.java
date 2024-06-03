@@ -16,23 +16,28 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import io.airbyte.api.client.AirbyteApiClient;
 import io.airbyte.api.client.WorkloadApiClient;
 import io.airbyte.api.client.generated.DestinationApi;
 import io.airbyte.api.client.generated.DestinationDefinitionApi;
 import io.airbyte.api.client.generated.SourceApi;
-import io.airbyte.api.client.invoker.generated.ApiException;
 import io.airbyte.api.client.model.generated.DestinationDefinitionRead;
+import io.airbyte.api.client.model.generated.NormalizationDestinationDefinitionConfig;
 import io.airbyte.commons.concurrency.VoidCallable;
 import io.airbyte.commons.converters.ThreadedTimeTracker;
+import io.airbyte.commons.json.Jsons;
 import io.airbyte.persistence.job.models.ReplicationInput;
 import io.airbyte.protocol.models.AirbyteAnalyticsTraceMessage;
 import io.airbyte.protocol.models.AirbyteLogMessage;
 import io.airbyte.protocol.models.AirbyteMessage;
 import io.airbyte.protocol.models.AirbyteMessage.Type;
+import io.airbyte.protocol.models.AirbyteRecordMessage;
+import io.airbyte.protocol.models.AirbyteStreamStatusRateLimitedReason;
+import io.airbyte.protocol.models.AirbyteStreamStatusReason;
+import io.airbyte.protocol.models.AirbyteStreamStatusTraceMessage;
 import io.airbyte.protocol.models.AirbyteTraceMessage;
 import io.airbyte.protocol.models.ConfiguredAirbyteCatalog;
+import io.airbyte.protocol.models.StreamDescriptor;
 import io.airbyte.workers.context.ReplicationContext;
 import io.airbyte.workers.context.ReplicationFeatureFlags;
 import io.airbyte.workers.helper.AirbyteMessageDataExtractor;
@@ -45,10 +50,18 @@ import io.airbyte.workers.internal.FieldSelector;
 import io.airbyte.workers.internal.bookkeeping.AirbyteMessageOrigin;
 import io.airbyte.workers.internal.bookkeeping.AirbyteMessageTracker;
 import io.airbyte.workers.internal.bookkeeping.SyncStatsTracker;
+import io.airbyte.workers.internal.bookkeeping.events.ReplicationAirbyteMessageEvent;
 import io.airbyte.workers.internal.bookkeeping.events.ReplicationAirbyteMessageEventPublishingHelper;
+import io.airbyte.workers.internal.bookkeeping.streamstatus.StreamStatusCachingApiClient;
+import io.airbyte.workers.internal.bookkeeping.streamstatus.StreamStatusTracker;
 import io.airbyte.workers.internal.syncpersistence.SyncPersistence;
 import io.airbyte.workload.api.client.generated.WorkloadApi;
+import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -67,9 +80,16 @@ class ReplicationWorkerHelperTest {
   private SyncPersistence syncPersistence;
   private AnalyticsMessageTracker analyticsMessageTracker;
   private StreamStatusCompletionTracker streamStatusCompletionTracker;
+  private StreamStatusTracker streamStatusTracker;
+  private StreamStatusCachingApiClient streamStatusApiClient;
   private WorkloadApiClient workloadApiClient;
   private AirbyteApiClient airbyteApiClient;
   private DestinationDefinitionApi destinationDefinitionApi;
+  private AirbyteMessageDataExtractor extractor;
+
+  private ReplicationAirbyteMessageEventPublishingHelper replicationAirbyteMessageEventPublishingHelper;
+  private ReplicationContext replicationContext = new ReplicationContext(true, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 0L,
+      1, UUID.randomUUID(), SOURCE_IMAGE, DESTINATION_IMAGE, UUID.randomUUID(), UUID.randomUUID());
 
   @BeforeEach
   void setUp() {
@@ -79,21 +99,26 @@ class ReplicationWorkerHelperTest {
     messageTracker = mock(AirbyteMessageTracker.class);
     analyticsMessageTracker = mock(AnalyticsMessageTracker.class);
     streamStatusCompletionTracker = mock(StreamStatusCompletionTracker.class);
+    streamStatusTracker = mock(StreamStatusTracker.class);
     workloadApiClient = mock(WorkloadApiClient.class);
     airbyteApiClient = mock(AirbyteApiClient.class);
+    replicationAirbyteMessageEventPublishingHelper = mock(ReplicationAirbyteMessageEventPublishingHelper.class);
+    streamStatusTracker = mock(StreamStatusTracker.class);
+    streamStatusApiClient = mock(StreamStatusCachingApiClient.class);
     when(messageTracker.getSyncStatsTracker()).thenReturn(syncStatsTracker);
     when(workloadApiClient.getWorkloadApi()).thenReturn(mock(WorkloadApi.class));
     when(airbyteApiClient.getDestinationApi()).thenReturn(mock(DestinationApi.class));
     when(airbyteApiClient.getSourceApi()).thenReturn(mock(SourceApi.class));
     destinationDefinitionApi = mock(DestinationDefinitionApi.class);
     when(airbyteApiClient.getDestinationDefinitionApi()).thenReturn(destinationDefinitionApi);
+    extractor = mock(AirbyteMessageDataExtractor.class);
     replicationWorkerHelper = spy(new ReplicationWorkerHelper(
-        mock(AirbyteMessageDataExtractor.class),
+        extractor,
         mock(FieldSelector.class),
         mapper,
         messageTracker,
         syncPersistence,
-        mock(ReplicationAirbyteMessageEventPublishingHelper.class),
+        replicationAirbyteMessageEventPublishingHelper,
         mock(ThreadedTimeTracker.class),
         mock(VoidCallable.class),
         workloadApiClient,
@@ -101,7 +126,10 @@ class ReplicationWorkerHelperTest {
         analyticsMessageTracker,
         Optional.empty(),
         airbyteApiClient,
-        streamStatusCompletionTracker));
+        streamStatusCompletionTracker,
+        streamStatusTracker,
+        streamStatusApiClient,
+        true));
   }
 
   @AfterEach
@@ -111,12 +139,10 @@ class ReplicationWorkerHelperTest {
 
   @ParameterizedTest
   @ValueSource(booleans = {true, false})
-  void testGetReplicationOutput(final boolean supportRefreshes) throws JsonProcessingException, ApiException {
+  void testGetReplicationOutput(final boolean supportRefreshes) throws IOException {
     mockSupportRefreshes(supportRefreshes);
     // Need to pass in a replication context
     final ConfiguredAirbyteCatalog catalog = new ConfiguredAirbyteCatalog().withAdditionalProperty("test", "test");
-    final ReplicationContext replicationContext = new ReplicationContext(true, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 0L,
-        1, UUID.randomUUID(), SOURCE_IMAGE, DESTINATION_IMAGE, UUID.randomUUID(), UUID.randomUUID());
     replicationWorkerHelper.initialize(
         replicationContext,
         mock(ReplicationFeatureFlags.class),
@@ -140,14 +166,66 @@ class ReplicationWorkerHelperTest {
   }
 
   @Test
-  void testAnalyticsMessageHandling() throws ApiException {
+  void testRateLimitedStreamStatusMessages() throws IOException {
     mockSupportRefreshes(false);
-    final ReplicationContext context =
-        new ReplicationContext(true, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 0L,
-            1, UUID.randomUUID(), SOURCE_IMAGE, DESTINATION_IMAGE, UUID.randomUUID(), UUID.randomUUID());
+    final Instant rateLimitedTimeStamp = Instant.parse("2024-05-29T09:25:27.000000Z");
+    final Instant recordMessageTimestamp = Instant.parse("2024-05-29T09:25:28.000000Z");
+
+    final StreamDescriptor streamDescriptor = new StreamDescriptor().withNamespace("namespace").withName("name");
+    when(extractor.getStreamFromMessage(any())).thenReturn(streamDescriptor);
+    replicationWorkerHelper.initialize(
+        replicationContext,
+        mock(ReplicationFeatureFlags.class),
+        mock(Path.class),
+        mock(ConfiguredAirbyteCatalog.class));
+    // Need to have a configured catalog for getReplicationOutput
+    replicationWorkerHelper.startDestination(
+        mock(AirbyteDestination.class),
+        new ReplicationInput().withCatalog(new ConfiguredAirbyteCatalog()),
+        mock(Path.class));
+
+    replicationWorkerHelper.startSource(
+        mock(AirbyteSource.class),
+        new ReplicationInput().withCatalog(new ConfiguredAirbyteCatalog()),
+        mock(Path.class));
+
+    final AirbyteMessage rateLimitedMessage = new AirbyteMessage()
+        .withType(Type.TRACE)
+        .withTrace(new AirbyteTraceMessage()
+            .withType(AirbyteTraceMessage.Type.STREAM_STATUS)
+            .withEmittedAt((double) rateLimitedTimeStamp.toEpochMilli())
+            .withStreamStatus(new AirbyteStreamStatusTraceMessage()
+                .withStreamDescriptor(streamDescriptor)
+                .withStatus(AirbyteStreamStatusTraceMessage.AirbyteStreamStatus.RUNNING)
+                .withReasons(Collections.singletonList(new AirbyteStreamStatusReason()
+                    .withType(AirbyteStreamStatusReason.AirbyteStreamStatusReasonType.RATE_LIMITED)
+                    .withRateLimited(new AirbyteStreamStatusRateLimitedReason().withQuotaReset(rateLimitedTimeStamp.toEpochMilli()))))));
+
+    final AirbyteMessage recordMessage = new AirbyteMessage()
+        .withType(Type.RECORD)
+        .withRecord(new AirbyteRecordMessage()
+            .withNamespace(streamDescriptor.getNamespace())
+            .withStream(streamDescriptor.getName())
+            .withData(Jsons.jsonNode(Map.of("col", 1)))
+            .withEmittedAt(recordMessageTimestamp.toEpochMilli()));
+
+    replicationWorkerHelper.internalProcessMessageFromSource(rateLimitedMessage);
+    replicationWorkerHelper.internalProcessMessageFromSource(recordMessage);
+
+    final ReplicationAirbyteMessageEvent rateLimitedEvent = new ReplicationAirbyteMessageEvent(AirbyteMessageOrigin.SOURCE,
+        rateLimitedMessage, replicationContext);
+    verify(replicationAirbyteMessageEventPublishingHelper).publishStatusEvent(rateLimitedEvent);
+    verify(replicationAirbyteMessageEventPublishingHelper).publishRunningStatusEvent(streamDescriptor, replicationContext,
+        AirbyteMessageOrigin.SOURCE,
+        recordMessage.getRecord().getEmittedAt());
+  }
+
+  @Test
+  void testAnalyticsMessageHandling() throws IOException {
+    mockSupportRefreshes(false);
     // Need to pass in a replication context
     replicationWorkerHelper.initialize(
-        context,
+        replicationContext,
         mock(ReplicationFeatureFlags.class),
         mock(Path.class),
         mock(ConfiguredAirbyteCatalog.class));
@@ -207,8 +285,59 @@ class ReplicationWorkerHelperTest {
     verify(replicationWorkerHelper, times(1)).internalProcessMessageFromDestination(mapRevertedDestinationMessage);
   }
 
-  private void mockSupportRefreshes(final boolean supportRefreshes) throws ApiException {
-    when(destinationDefinitionApi.getDestinationDefinition(any())).thenReturn(new DestinationDefinitionRead().supportRefreshes(supportRefreshes));
+  @Test
+  void callsStreamStatusTrackerOnSourceMessage() throws IOException {
+    mockSupportRefreshes(true);
+
+    replicationWorkerHelper.initialize(
+        replicationContext,
+        mock(ReplicationFeatureFlags.class),
+        mock(Path.class),
+        mock(ConfiguredAirbyteCatalog.class));
+
+    final AirbyteMessage message = mock(AirbyteMessage.class);
+
+    replicationWorkerHelper.processMessageFromSource(message);
+
+    verify(streamStatusTracker, times(1)).track(message);
+  }
+
+  @Test
+  void callsStreamStatusTrackerOnDestinationMessage() throws IOException {
+    mockSupportRefreshes(true);
+
+    replicationWorkerHelper.initialize(
+        replicationContext,
+        mock(ReplicationFeatureFlags.class),
+        mock(Path.class),
+        mock(ConfiguredAirbyteCatalog.class));
+
+    final AirbyteMessage message = mock(AirbyteMessage.class);
+    when(mapper.revertMap(message)).thenReturn(message);
+
+    replicationWorkerHelper.processMessageFromDestination(message);
+
+    verify(streamStatusTracker, times(1)).track(message);
+  }
+
+  private void mockSupportRefreshes(final boolean supportRefreshes) throws IOException {
+    when(destinationDefinitionApi.getDestinationDefinition(any())).thenReturn(
+        new DestinationDefinitionRead(
+            UUID.randomUUID(),
+            "name",
+            "dockerRepository",
+            "dockerImageTag",
+            URI.create("http://localhost"),
+            false,
+            new NormalizationDestinationDefinitionConfig(),
+            supportRefreshes,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null));
   }
 
 }

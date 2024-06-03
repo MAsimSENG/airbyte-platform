@@ -24,7 +24,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.Lists;
-import io.airbyte.api.client.invoker.generated.ApiException;
 import io.airbyte.api.model.generated.AirbyteStream;
 import io.airbyte.api.model.generated.AirbyteStreamAndConfiguration;
 import io.airbyte.api.model.generated.AirbyteStreamConfiguration;
@@ -483,7 +482,7 @@ class SchedulerHandlerTest {
         .withProtocolVersion(SOURCE_PROTOCOL_VERSION)
         .withSpec(CONNECTOR_SPECIFICATION);
     when(actorDefinitionVersionHelper.getSourceVersion(sourceDefinition, source.getWorkspaceId(), null)).thenReturn(sourceVersion);
-    when(secretsRepositoryWriter.statefulSplitEphemeralSecrets(
+    when(secretsRepositoryWriter.createEphemeralFromConfig(
         eq(source.getConfiguration()),
         any(), any())).thenReturn(source.getConfiguration());
     when(synchronousSchedulerClient.createSourceCheckConnectionJob(source, sourceVersion, false, RESOURCE_REQUIREMENT))
@@ -522,7 +521,7 @@ class SchedulerHandlerTest {
         .withWorkspaceId(source.getWorkspaceId());
     when(synchronousSchedulerClient.createSourceCheckConnectionJob(submittedSource, sourceVersion, false, null))
         .thenReturn((SynchronousResponse<StandardCheckConnectionOutput>) jobResponse);
-    when(secretsRepositoryWriter.statefulSplitEphemeralSecrets(
+    when(secretsRepositoryWriter.createEphemeralFromConfig(
         eq(source.getConfiguration()),
         any(), any())).thenReturn(source.getConfiguration());
     schedulerHandler.checkSourceConnectionFromSourceIdForUpdate(sourceUpdate);
@@ -584,7 +583,7 @@ class SchedulerHandlerTest {
 
     when(synchronousSchedulerClient.createDestinationCheckConnectionJob(destination, destinationVersion, false, null))
         .thenReturn((SynchronousResponse<StandardCheckConnectionOutput>) jobResponse);
-    when(secretsRepositoryWriter.statefulSplitEphemeralSecrets(
+    when(secretsRepositoryWriter.createEphemeralFromConfig(
         eq(destination.getConfiguration()), any(), any())).thenReturn(destination.getConfiguration());
     schedulerHandler.checkDestinationConnectionFromDestinationCreate(destinationCoreConfig);
 
@@ -625,7 +624,7 @@ class SchedulerHandlerTest {
         .withWorkspaceId(destination.getWorkspaceId());
     when(synchronousSchedulerClient.createDestinationCheckConnectionJob(submittedDestination, destinationVersion, false, RESOURCE_REQUIREMENT))
         .thenReturn((SynchronousResponse<StandardCheckConnectionOutput>) jobResponse);
-    when(secretsRepositoryWriter.statefulSplitEphemeralSecrets(
+    when(secretsRepositoryWriter.createEphemeralFromConfig(
         eq(destination.getConfiguration()),
         any(), any())).thenReturn(destination.getConfiguration());
     schedulerHandler.checkDestinationConnectionFromDestinationIdForUpdate(destinationUpdate);
@@ -755,7 +754,7 @@ class SchedulerHandlerTest {
         .withSpec(CONNECTOR_SPECIFICATION);
     when(actorDefinitionVersionHelper.getSourceVersion(sourceDefinition, source.getWorkspaceId(), source.getSourceId()))
         .thenReturn(sourceVersion);
-    when(secretsRepositoryWriter.statefulSplitEphemeralSecrets(
+    when(secretsRepositoryWriter.createEphemeralFromConfig(
         eq(source.getConfiguration()),
         any(), any())).thenReturn(source.getConfiguration());
     when(synchronousSchedulerClient.createSourceCheckConnectionJob(source, sourceVersion, false, null))
@@ -1181,7 +1180,7 @@ class SchedulerHandlerTest {
 
   @Test
   void testDiscoverSchemaFromSourceIdWithConnectionIdBreakingFeatureFlagOn()
-      throws IOException, JsonValidationException, ConfigNotFoundException, InterruptedException, ApiException {
+      throws IOException, JsonValidationException, ConfigNotFoundException, InterruptedException {
     final SourceConnection source = SourceHelpers.generateSource(UUID.randomUUID());
     final UUID connectionId = UUID.randomUUID();
     final UUID discoveredCatalogId = UUID.randomUUID();
@@ -1306,7 +1305,7 @@ class SchedulerHandlerTest {
 
   @Test
   void testDiscoverSchemaForSourceMultipleConnectionsFeatureFlagOn()
-      throws IOException, JsonValidationException, ConfigNotFoundException, InterruptedException, ApiException {
+      throws IOException, JsonValidationException, ConfigNotFoundException {
     final SourceConnection source = SourceHelpers.generateSource(UUID.randomUUID());
     final UUID connectionId = UUID.randomUUID();
     final UUID connectionId2 = UUID.randomUUID();
@@ -1474,7 +1473,7 @@ class SchedulerHandlerTest {
         .thenReturn(sourceVersion);
     when(synchronousSchedulerClient.createDiscoverSchemaJob(source, sourceVersion, false, null, WorkloadPriority.HIGH))
         .thenReturn(discoverResponse);
-    when(secretsRepositoryWriter.statefulSplitEphemeralSecrets(
+    when(secretsRepositoryWriter.createEphemeralFromConfig(
         eq(source.getConfiguration()),
         any(), any())).thenReturn(source.getConfiguration());
 
@@ -1512,7 +1511,7 @@ class SchedulerHandlerTest {
         .thenReturn(sourceVersion);
     when(synchronousSchedulerClient.createDiscoverSchemaJob(source, sourceVersion, false, null, WorkloadPriority.HIGH))
         .thenReturn((SynchronousResponse<UUID>) jobResponse);
-    when(secretsRepositoryWriter.statefulSplitEphemeralSecrets(
+    when(secretsRepositoryWriter.createEphemeralFromConfig(
         eq(source.getConfiguration()),
         any(), any())).thenReturn(source.getConfiguration());
     when(job.getSuccessOutput()).thenReturn(Optional.empty());

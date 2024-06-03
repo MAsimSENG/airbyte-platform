@@ -57,6 +57,8 @@ import io.airbyte.workers.internal.bookkeeping.events.ReplicationAirbyteMessageE
 import io.airbyte.workers.internal.bookkeeping.events.ReplicationAirbyteMessageEventPublishingHelper
 import io.airbyte.workers.internal.bookkeeping.getPerStreamStats
 import io.airbyte.workers.internal.bookkeeping.getTotalStats
+import io.airbyte.workers.internal.bookkeeping.streamstatus.StreamStatusCachingApiClient
+import io.airbyte.workers.internal.bookkeeping.streamstatus.StreamStatusTracker
 import io.airbyte.workers.internal.exception.DestinationException
 import io.airbyte.workers.internal.exception.SourceException
 import io.airbyte.workers.internal.syncpersistence.SyncPersistence
@@ -92,6 +94,9 @@ class ReplicationWorkerHelper(
   private val workloadId: Optional<String>,
   private val airbyteApiClient: AirbyteApiClient,
   private val streamStatusCompletionTracker: StreamStatusCompletionTracker,
+  private val streamStatusTracker: StreamStatusTracker,
+  private val streamStatusApiClient: StreamStatusCachingApiClient,
+  processRateLimitedMessage: Boolean,
 ) {
   private val metricClient = MetricClientFactory.getMetricClient()
   private val metricAttrs: MutableList<MetricAttribute> = mutableListOf()
@@ -112,6 +117,12 @@ class ReplicationWorkerHelper(
   private var currentDestinationStream: StreamDescriptor? = null
   private var ctx: ReplicationContext? = null
   private lateinit var replicationFeatureFlags: ReplicationFeatureFlags
+  private val rateLimitedMessageHandler =
+    RateLimitedMessageHandler(
+      airbyteMessageDataExtractor,
+      replicationAirbyteMessageEventPublishingHelper,
+      processRateLimitedMessage,
+    )
 
   fun markCancelled(): Unit = _cancelled.set(true)
 
@@ -184,6 +195,8 @@ class ReplicationWorkerHelper(
 
     this.ctx = ctx
     this.replicationFeatureFlags = replicationFeatureFlags
+    this.streamStatusTracker.init(ctx)
+    this.streamStatusApiClient.init(ctx)
 
     analyticsMessageTracker.ctx = ctx
 
@@ -195,19 +208,19 @@ class ReplicationWorkerHelper(
     ApmTraceUtils.addTagsToTrace(ctx.connectionId, ctx.attempt.toLong(), ctx.jobId.toString(), jobRoot)
     val supportRefreshes =
       airbyteApiClient.destinationDefinitionApi.getDestinationDefinition(
-        DestinationDefinitionIdRequestBody().destinationDefinitionId(ctx.destinationDefinitionId),
+        DestinationDefinitionIdRequestBody(destinationDefinitionId = ctx.destinationDefinitionId),
       ).supportRefreshes
     streamStatusCompletionTracker.startTracking(configuredAirbyteCatalog, ctx, supportRefreshes)
   }
 
   fun startDestination(
     destination: AirbyteDestination,
-    replicaitonInput: ReplicationInput,
+    replicationInput: ReplicationInput,
     jobRoot: Path,
   ) {
     timeTracker.trackDestinationWriteStartTime()
     destinationConfig =
-      WorkerUtils.syncToWorkerDestinationConfig(replicaitonInput)
+      WorkerUtils.syncToWorkerDestinationConfig(replicationInput)
         .apply { catalog = mapper.mapCatalog(catalog) }
 
     try {
@@ -236,6 +249,7 @@ class ReplicationWorkerHelper(
   }
 
   fun endOfReplication() {
+    rateLimitedMessageHandler.clear()
     val context = requireNotNull(ctx)
     // Publish a complete status event for all streams associated with the connection.
     // This is to ensure that all streams end up in a terminal state and is necessary for
@@ -365,14 +379,12 @@ class ReplicationWorkerHelper(
     fieldSelector.filterSelectedFields(sourceRawMessage)
     fieldSelector.validateSchema(sourceRawMessage)
     messageTracker.acceptFromSource(sourceRawMessage)
+    streamStatusTracker.track(sourceRawMessage)
     if (isAnalyticsMessage(sourceRawMessage)) {
       analyticsMessageTracker.addMessage(sourceRawMessage, AirbyteMessageOrigin.SOURCE)
     }
 
-    if (shouldPublishMessage(sourceRawMessage)) {
-      replicationAirbyteMessageEventPublishingHelper
-        .publishStatusEvent(ReplicationAirbyteMessageEvent(AirbyteMessageOrigin.SOURCE, sourceRawMessage, context))
-    }
+    handleControlAndStreamStatusMessages(sourceRawMessage, context)
 
     recordsRead += 1
     if (recordsRead % 5000 == 0L) {
@@ -390,9 +402,24 @@ class ReplicationWorkerHelper(
     return sourceRawMessage
   }
 
+  private fun handleControlAndStreamStatusMessages(
+    sourceRawMessage: AirbyteMessage,
+    context: ReplicationContext,
+  ) {
+    if (shouldPublishMessage(sourceRawMessage)) {
+      rateLimitedMessageHandler.moveStreamToRateLimitedStateIfApplicable(sourceRawMessage)
+      replicationAirbyteMessageEventPublishingHelper
+        .publishStatusEvent(ReplicationAirbyteMessageEvent(AirbyteMessageOrigin.SOURCE, sourceRawMessage, context))
+    } else {
+      rateLimitedMessageHandler.moveStreamOutOfRateLimitedStateIfApplicable(sourceRawMessage, context)
+    }
+  }
+
   @VisibleForTesting
   fun internalProcessMessageFromDestination(destinationRawMessage: AirbyteMessage) {
     val context = requireNotNull(ctx)
+
+    streamStatusTracker.track(destinationRawMessage)
 
     logger.debug { "State in ReplicationWorkerHelper from destination: $destinationRawMessage" }
 
@@ -450,11 +477,11 @@ class ReplicationWorkerHelper(
   }
 
   fun getSourceDefinitionIdForSourceId(sourceId: UUID): UUID {
-    return airbyteApiClient.sourceApi.getSource(SourceIdRequestBody().sourceId(sourceId)).sourceDefinitionId
+    return airbyteApiClient.sourceApi.getSource(SourceIdRequestBody(sourceId = sourceId)).sourceDefinitionId
   }
 
   fun getDestinationDefinitionIdForDestinationId(destinationId: UUID): UUID {
-    return airbyteApiClient.destinationApi.getDestination(DestinationIdRequestBody().destinationId(destinationId)).destinationDefinitionId
+    return airbyteApiClient.destinationApi.getDestination(DestinationIdRequestBody(destinationId = destinationId)).destinationDefinitionId
   }
 
   private fun getTotalStats(

@@ -39,6 +39,7 @@ import io.airbyte.api.client.generated.DestinationDefinitionApi;
 import io.airbyte.api.client.generated.SourceApi;
 import io.airbyte.api.client.model.generated.DestinationDefinitionRead;
 import io.airbyte.api.client.model.generated.DestinationRead;
+import io.airbyte.api.client.model.generated.NormalizationDestinationDefinitionConfig;
 import io.airbyte.api.client.model.generated.SourceRead;
 import io.airbyte.api.client.model.generated.StreamStatusIncompleteRunCause;
 import io.airbyte.commons.concurrency.VoidCallable;
@@ -99,6 +100,8 @@ import io.airbyte.workers.internal.bookkeeping.AirbyteMessageTracker;
 import io.airbyte.workers.internal.bookkeeping.SyncStatsTracker;
 import io.airbyte.workers.internal.bookkeeping.events.ReplicationAirbyteMessageEvent;
 import io.airbyte.workers.internal.bookkeeping.events.ReplicationAirbyteMessageEventPublishingHelper;
+import io.airbyte.workers.internal.bookkeeping.streamstatus.StreamStatusCachingApiClient;
+import io.airbyte.workers.internal.bookkeeping.streamstatus.StreamStatusTracker;
 import io.airbyte.workers.internal.exception.DestinationException;
 import io.airbyte.workers.internal.exception.SourceException;
 import io.airbyte.workers.internal.syncpersistence.SyncPersistence;
@@ -106,6 +109,7 @@ import io.airbyte.workers.test_utils.AirbyteMessageUtils;
 import io.airbyte.workers.test_utils.TestConfigHelpers;
 import io.airbyte.workload.api.client.generated.WorkloadApi;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -196,6 +200,8 @@ abstract class ReplicationWorkerTest {
   protected DestinationApi destinationApi;
   protected StreamStatusCompletionTracker streamStatusCompletionTracker;
   protected DestinationDefinitionApi destinationDefinitionApi;
+  protected StreamStatusTracker streamStatusTracker;
+  protected StreamStatusCachingApiClient streamStatusApiClient;
 
   ReplicationWorker getDefaultReplicationWorker() {
     return getDefaultReplicationWorker(false);
@@ -247,16 +253,54 @@ abstract class ReplicationWorkerTest {
     analyticsMessageTracker = mock(AnalyticsMessageTracker.class);
 
     sourceApi = mock(SourceApi.class);
-    when(sourceApi.getSource(any())).thenReturn(new SourceRead().sourceDefinitionId(SOURCE_DEFINITION_ID));
+    when(sourceApi.getSource(any())).thenReturn(new SourceRead(
+        SOURCE_DEFINITION_ID,
+        UUID.randomUUID(),
+        UUID.randomUUID(),
+        Jsons.jsonNode(Map.of()),
+        "name",
+        "source-name",
+        null,
+        null,
+        null,
+        null));
     destinationApi = mock(DestinationApi.class);
-    when(destinationApi.getDestination(any())).thenReturn(new DestinationRead().destinationDefinitionId(DESTINATION_DEFINITION_ID));
+    when(destinationApi.getDestination(any())).thenReturn(new DestinationRead(
+        DESTINATION_DEFINITION_ID,
+        UUID.randomUUID(),
+        UUID.randomUUID(),
+        Jsons.jsonNode(Map.of()),
+        "name",
+        "destination-name",
+        null,
+        null,
+        null,
+        null));
     streamStatusCompletionTracker = mock(StreamStatusCompletionTracker.class);
+    streamStatusTracker = mock(StreamStatusTracker.class);
+    streamStatusApiClient = mock(StreamStatusCachingApiClient.class);
 
     when(airbyteApiClient.getDestinationApi()).thenReturn(destinationApi);
     when(airbyteApiClient.getSourceApi()).thenReturn(sourceApi);
 
     destinationDefinitionApi = mock(DestinationDefinitionApi.class);
-    when(destinationDefinitionApi.getDestinationDefinition(any())).thenReturn(new DestinationDefinitionRead().supportRefreshes(true));
+    var destinationDefinitionRead = new DestinationDefinitionRead(
+        UUID.randomUUID(),
+        "name",
+        "dockerRepository",
+        "dockerImageTag",
+        URI.create("http://localhost"),
+        false,
+        new NormalizationDestinationDefinitionConfig(),
+        true,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
+    when(destinationDefinitionApi.getDestinationDefinition(any())).thenReturn(destinationDefinitionRead);
     when(airbyteApiClient.getDestinationDefinitionApi()).thenReturn(destinationDefinitionApi);
 
     when(messageTracker.getSyncStatsTracker()).thenReturn(syncStatsTracker);

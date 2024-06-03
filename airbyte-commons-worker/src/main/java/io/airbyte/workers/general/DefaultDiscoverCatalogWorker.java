@@ -121,10 +121,8 @@ public class DefaultDiscoverCatalogWorker implements DiscoverCatalogWorker {
         if (!error.isEmpty()) {
           WorkerUtils.throwWorkerException(error, process);
         }
-        final DiscoverCatalogResult result =
-            AirbyteApiClient.retryWithJitter(() -> airbyteApiClient.getSourceApi()
-                .writeDiscoverCatalogResult(buildSourceDiscoverSchemaWriteRequestBody(discoverSchemaInput, catalog.get())),
-                WRITE_DISCOVER_CATALOG_LOGS_TAG);
+        final DiscoverCatalogResult result = airbyteApiClient.getSourceApi()
+            .writeDiscoverCatalogResult(buildSourceDiscoverSchemaWriteRequestBody(discoverSchemaInput, catalog.get()));
         jobOutput.setDiscoverCatalogId(result.getCatalogId());
       } else if (failureReasonOptional.isEmpty()) {
         WorkerUtils.throwWorkerException("Integration failed to output a catalog struct and did not output a failure reason", process);
@@ -187,15 +185,13 @@ public class DefaultDiscoverCatalogWorker implements DiscoverCatalogWorker {
 
   private SourceDiscoverSchemaWriteRequestBody buildSourceDiscoverSchemaWriteRequestBody(final StandardDiscoverCatalogInput discoverSchemaInput,
                                                                                          final AirbyteCatalog catalog) {
-    return new SourceDiscoverSchemaWriteRequestBody().catalog(
-        CatalogClientConverters.toAirbyteCatalogClientApi(catalog)).sourceId(
-            // NOTE: sourceId is marked required in the OpenAPI config but the code generator doesn't enforce
-            // it, so we check again here.
-            discoverSchemaInput.getSourceId() == null ? null : UUID.fromString(discoverSchemaInput.getSourceId()))
-        .connectorVersion(
-            discoverSchemaInput.getConnectorVersion())
-        .configurationHash(
-            discoverSchemaInput.getConfigHash());
+    return new SourceDiscoverSchemaWriteRequestBody(
+        CatalogClientConverters.toAirbyteCatalogClientApi(catalog),
+        // NOTE: sourceId is marked required in the OpenAPI config but the code generator doesn't enforce
+        // it, so we check again here.
+        discoverSchemaInput.getSourceId() == null ? null : UUID.fromString(discoverSchemaInput.getSourceId()),
+        discoverSchemaInput.getConnectorVersion(),
+        discoverSchemaInput.getConfigHash());
   }
 
   private Map<String, Object> generateTraceTags(final StandardDiscoverCatalogInput discoverSchemaInput, final Path jobRoot) {

@@ -11,7 +11,6 @@ import io.airbyte.analytics.TrackingClient;
 import io.airbyte.api.client.AirbyteApiClient;
 import io.airbyte.api.client.WorkloadApiClient;
 import io.airbyte.api.client.generated.SourceDefinitionApi;
-import io.airbyte.api.client.invoker.generated.ApiException;
 import io.airbyte.api.client.model.generated.SourceDefinitionIdRequestBody;
 import io.airbyte.api.client.model.generated.SourceIdRequestBody;
 import io.airbyte.commons.concurrency.VoidCallable;
@@ -25,6 +24,7 @@ import io.airbyte.featureflag.DestinationTimeoutSeconds;
 import io.airbyte.featureflag.FeatureFlagClient;
 import io.airbyte.featureflag.FieldSelectionEnabled;
 import io.airbyte.featureflag.Multi;
+import io.airbyte.featureflag.ProcessRateLimitedMessage;
 import io.airbyte.featureflag.RemoveValidationLimit;
 import io.airbyte.featureflag.ReplicationWorkerImpl;
 import io.airbyte.featureflag.ShouldFailSyncOnDestinationTimeout;
@@ -56,12 +56,15 @@ import io.airbyte.workers.internal.HeartbeatTimeoutChaperone;
 import io.airbyte.workers.internal.NamespacingMapper;
 import io.airbyte.workers.internal.bookkeeping.AirbyteMessageTracker;
 import io.airbyte.workers.internal.bookkeeping.events.ReplicationAirbyteMessageEventPublishingHelper;
+import io.airbyte.workers.internal.bookkeeping.streamstatus.StreamStatusCachingApiClient;
+import io.airbyte.workers.internal.bookkeeping.streamstatus.StreamStatusTracker;
 import io.airbyte.workers.internal.syncpersistence.SyncPersistence;
 import io.airbyte.workers.internal.syncpersistence.SyncPersistenceFactory;
 import io.airbyte.workers.process.AirbyteIntegrationLauncherFactory;
 import io.micronaut.context.annotation.Value;
 import io.micronaut.core.util.CollectionUtils;
 import jakarta.inject.Singleton;
+import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -95,6 +98,8 @@ public class ReplicationWorkerFactory {
   private final WorkloadApiClient workloadApiClient;
   private final boolean workloadEnabled;
   private final StreamStatusCompletionTracker streamStatusCompletionTracker;
+  private final StreamStatusTracker streamStatusTracker;
+  private final StreamStatusCachingApiClient streamStatusApiClient;
   private final Clock clock;
 
   public ReplicationWorkerFactory(
@@ -110,6 +115,8 @@ public class ReplicationWorkerFactory {
                                   final TrackingClient trackingClient,
                                   @Value("${airbyte.workload.enabled}") final boolean workloadEnabled,
                                   final StreamStatusCompletionTracker streamStatusCompletionTracker,
+                                  final StreamStatusTracker streamStatusTracker,
+                                  final StreamStatusCachingApiClient streamStatusApiClient,
                                   final Clock clock) {
     this.airbyteIntegrationLauncherFactory = airbyteIntegrationLauncherFactory;
     this.airbyteApiClient = airbyteApiClient;
@@ -124,6 +131,8 @@ public class ReplicationWorkerFactory {
     this.workloadEnabled = workloadEnabled;
     this.trackingClient = trackingClient;
     this.streamStatusCompletionTracker = streamStatusCompletionTracker;
+    this.streamStatusTracker = streamStatusTracker;
+    this.streamStatusApiClient = streamStatusApiClient;
     this.clock = clock;
   }
 
@@ -136,11 +145,9 @@ public class ReplicationWorkerFactory {
                                   final IntegrationLauncherConfig destinationLauncherConfig,
                                   final VoidCallable onReplicationRunning,
                                   final Optional<String> workloadId)
-      throws ApiException {
-    final UUID sourceDefinitionId = AirbyteApiClient.retryWithJitter(
-        () -> airbyteApiClient.getSourceApi().getSource(
-            new SourceIdRequestBody().sourceId(replicationInput.getSourceId())).getSourceDefinitionId(),
-        "get the source definition for feature flag checks");
+      throws IOException {
+    final UUID sourceDefinitionId = airbyteApiClient.getSourceApi().getSource(
+        new SourceIdRequestBody(replicationInput.getSourceId())).getSourceDefinitionId();
     final HeartbeatMonitor heartbeatMonitor = createHeartbeatMonitor(sourceDefinitionId, airbyteApiClient.getSourceDefinitionApi());
     final HeartbeatTimeoutChaperone heartbeatTimeoutChaperone = createHeartbeatTimeoutChaperone(heartbeatMonitor,
         featureFlagClient, replicationInput, sourceLauncherConfig.getDockerImage(), metricClient);
@@ -176,7 +183,7 @@ public class ReplicationWorkerFactory {
         syncPersistence, recordSchemaValidator, fieldSelector, heartbeatTimeoutChaperone,
         featureFlagClient, jobRunConfig, replicationInput, airbyteMessageDataExtractor, replicationAirbyteMessageEventPublishingHelper,
         onReplicationRunning, metricClient, destinationTimeout, workloadApiClient, workloadEnabled, analyticsMessageTracker,
-        workloadId, airbyteApiClient, streamStatusCompletionTracker, clock);
+        workloadId, airbyteApiClient, streamStatusCompletionTracker, streamStatusTracker, streamStatusApiClient, clock);
   }
 
   /**
@@ -218,9 +225,10 @@ public class ReplicationWorkerFactory {
    * Create HeartbeatMonitor.
    */
   private static HeartbeatMonitor createHeartbeatMonitor(final UUID sourceDefinitionId,
-                                                         final SourceDefinitionApi sourceDefinitionApi) {
-    final Long maxSecondsBetweenMessages = sourceDefinitionId != null ? AirbyteApiClient.retryWithJitter(() -> sourceDefinitionApi
-        .getSourceDefinition(new SourceDefinitionIdRequestBody().sourceDefinitionId(sourceDefinitionId)), "get the source definition")
+                                                         final SourceDefinitionApi sourceDefinitionApi)
+      throws IOException {
+    final Long maxSecondsBetweenMessages = sourceDefinitionId != null ? sourceDefinitionApi
+        .getSourceDefinition(new SourceDefinitionIdRequestBody(sourceDefinitionId))
         .getMaxSecondsBetweenMessages() : null;
 
     if (maxSecondsBetweenMessages != null) {
@@ -321,9 +329,12 @@ public class ReplicationWorkerFactory {
                                                            final Optional<String> workloadId,
                                                            final AirbyteApiClient airbyteApiClient,
                                                            final StreamStatusCompletionTracker streamStatusCompletionTracker,
+                                                           final StreamStatusTracker streamStatusTracker,
+                                                           final StreamStatusCachingApiClient streamStatusApiClient,
                                                            final Clock clock) {
     final Context flagContext = getFeatureFlagContext(replicationInput);
     final String workerImpl = featureFlagClient.stringVariation(ReplicationWorkerImpl.INSTANCE, flagContext);
+    final Boolean processRateLimitedMessage = featureFlagClient.boolVariation(ProcessRateLimitedMessage.INSTANCE, flagContext);
     return buildReplicationWorkerInstance(
         workerImpl,
         jobRunConfig.getJobId(),
@@ -352,7 +363,10 @@ public class ReplicationWorkerFactory {
         featureFlagClient,
         airbyteApiClient,
         streamStatusCompletionTracker,
-        clock);
+        streamStatusTracker,
+        streamStatusApiClient,
+        clock,
+        processRateLimitedMessage);
   }
 
   private static Context getFeatureFlagContext(final ReplicationInput replicationInput) {
@@ -401,11 +415,16 @@ public class ReplicationWorkerFactory {
                                                                   final FeatureFlagClient featureFlagClient,
                                                                   final AirbyteApiClient airbyteApiClient,
                                                                   final StreamStatusCompletionTracker streamStatusCompletionTracker,
-                                                                  final Clock clock) {
+                                                                  final StreamStatusTracker streamStatusTracker,
+                                                                  final StreamStatusCachingApiClient streamStatusApiClient,
+                                                                  final Clock clock,
+                                                                  final Boolean processRateLimitedMessage) {
     final ReplicationWorkerHelper replicationWorkerHelper =
         new ReplicationWorkerHelper(airbyteMessageDataExtractor, fieldSelector, mapper, messageTracker, syncPersistence,
             messageEventPublishingHelper, new ThreadedTimeTracker(), onReplicationRunning, workloadApiClient,
-            workloadEnabled, analyticsMessageTracker, workloadId, airbyteApiClient, streamStatusCompletionTracker);
+            workloadEnabled, analyticsMessageTracker, workloadId, airbyteApiClient, streamStatusCompletionTracker, streamStatusTracker,
+            streamStatusApiClient, processRateLimitedMessage);
+
     final Optional<BufferedReplicationWorkerType> bufferedReplicationWorkerType = bufferedReplicationWorkerType(workerImpl);
 
     if (bufferedReplicationWorkerType.isPresent()) {

@@ -28,9 +28,13 @@ class SegmentTrackingClientTest {
   private val airbyteVersion = AirbyteVersion("dev")
   private val deploymentId = UUID.randomUUID()
   private val deploymentMetadata: DeploymentMetadataRead =
-    DeploymentMetadataRead().id(
+    DeploymentMetadataRead(
+      id =
       deploymentId,
-    ).environment(WorkerEnvironment.KUBERNETES.name).mode(Configs.DeploymentMode.OSS.name).version(airbyteVersion.serialize())
+      environment = WorkerEnvironment.KUBERNETES.name,
+      mode = Configs.DeploymentMode.OSS.name,
+      version = airbyteVersion.serialize(),
+    )
   private val deployment: Deployment = Deployment(deploymentMetadata)
   private val identity =
     TrackingIdentity(

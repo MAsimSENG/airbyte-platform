@@ -158,6 +158,8 @@ object UseWorkloadApi : Temporary<Boolean>(key = "platform.use-workload-api", de
 
 object EmitStateStatsToSegment : Temporary<Boolean>(key = "platform.emit-state-stats-segment", default = true)
 
+object ProcessRateLimitedMessage : Temporary<Boolean>(key = "platform.process-rate-limited-message", default = true)
+
 object AddInitialCreditsForWorkspace : Temporary<Int>(key = "add-credits-at-workspace-creation-for-org", default = 0)
 
 object WorkloadApiRouting : Permanent<String>(key = "workload-api-routing", default = "workload_default")
@@ -189,3 +191,7 @@ object ConnectionFieldLimitOverride : Permanent<Int>(key = "connection-field-lim
 object DeleteDanglingSecrets : Temporary<Boolean>(key = "platform.delete-dangling-secrets", default = false)
 
 object EnableResumableFullRefresh : Temporary<Boolean>(key = "platform.enable-resumable-full-refresh", default = true)
+
+object AlwaysRunCheckBeforeSync : Permanent<Boolean>(key = "platform.always-run-check-before-sync", default = false)
+
+object UseStreamStatusTracker2024 : Temporary<Boolean>(key = "use-stream-status-tracker-2024", default = false)

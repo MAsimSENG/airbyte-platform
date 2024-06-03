@@ -108,7 +108,7 @@ class TemporalAttemptExecutionTest {
     verify(worker).run(anyString(), any());
     verify(mdcSetter, atLeast(1)).accept(jobRoot);
     verify(attemptApi, times(1)).setWorkflowInAttempt(
-        argThat(request -> request.getAttemptNumber().equals(ATTEMPT_NUMBER) && request.getJobId().equals(Long.valueOf(JOB_ID))));
+        argThat(request -> request.getAttemptNumber() == ATTEMPT_NUMBER && request.getJobId() == Long.valueOf(JOB_ID)));
   }
 
   @Test
@@ -120,7 +120,7 @@ class TemporalAttemptExecutionTest {
     verify(worker).run(anyString(), any());
     verify(mdcSetter).accept(jobRoot);
     verify(attemptApi, times(1)).setWorkflowInAttempt(
-        argThat(request -> request.getAttemptNumber().equals(ATTEMPT_NUMBER) && request.getJobId().equals(Long.valueOf(JOB_ID))));
+        argThat(request -> request.getAttemptNumber() == ATTEMPT_NUMBER && request.getJobId() == Long.valueOf(JOB_ID)));
   }
 
 }

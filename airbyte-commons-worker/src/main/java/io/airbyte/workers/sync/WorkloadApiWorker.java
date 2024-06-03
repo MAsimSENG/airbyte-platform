@@ -11,7 +11,6 @@ import dev.failsafe.RetryPolicy;
 import dev.failsafe.function.CheckedSupplier;
 import io.airbyte.api.client.AirbyteApiClient;
 import io.airbyte.api.client.WorkloadApiClient;
-import io.airbyte.api.client.invoker.generated.ApiException;
 import io.airbyte.api.client.model.generated.ConnectionIdRequestBody;
 import io.airbyte.api.client.model.generated.Geography;
 import io.airbyte.commons.json.Jsons;
@@ -208,8 +207,8 @@ public class WorkloadApiWorker implements Worker<ReplicationInput, ReplicationOu
 
   private Geography getGeography(final UUID connectionId) throws WorkerException {
     try {
-      return apiClient.getConnectionApi().getConnection(new ConnectionIdRequestBody().connectionId(connectionId)).getGeography();
-    } catch (final ApiException e) {
+      return apiClient.getConnectionApi().getConnection(new ConnectionIdRequestBody(connectionId)).getGeography();
+    } catch (final IOException e) {
       throw new WorkerException("Unable to find geography of connection " + connectionId, e);
     }
   }

@@ -15,81 +15,81 @@ import com.google.common.collect.Sets;
 import com.google.common.io.Resources;
 import dev.failsafe.Failsafe;
 import dev.failsafe.RetryPolicy;
-import io.airbyte.api.client2.AirbyteApiClient;
-import io.airbyte.api.client2.model.generated.ActorDefinitionRequestBody;
-import io.airbyte.api.client2.model.generated.ActorType;
-import io.airbyte.api.client2.model.generated.AirbyteCatalog;
-import io.airbyte.api.client2.model.generated.AirbyteStream;
-import io.airbyte.api.client2.model.generated.AirbyteStreamAndConfiguration;
-import io.airbyte.api.client2.model.generated.AirbyteStreamConfiguration;
-import io.airbyte.api.client2.model.generated.AttemptInfoRead;
-import io.airbyte.api.client2.model.generated.CheckConnectionRead;
-import io.airbyte.api.client2.model.generated.ConnectionCreate;
-import io.airbyte.api.client2.model.generated.ConnectionIdRequestBody;
-import io.airbyte.api.client2.model.generated.ConnectionRead;
-import io.airbyte.api.client2.model.generated.ConnectionReadList;
-import io.airbyte.api.client2.model.generated.ConnectionScheduleData;
-import io.airbyte.api.client2.model.generated.ConnectionScheduleType;
-import io.airbyte.api.client2.model.generated.ConnectionState;
-import io.airbyte.api.client2.model.generated.ConnectionStatus;
-import io.airbyte.api.client2.model.generated.ConnectionUpdate;
-import io.airbyte.api.client2.model.generated.CustomDestinationDefinitionCreate;
-import io.airbyte.api.client2.model.generated.CustomSourceDefinitionCreate;
-import io.airbyte.api.client2.model.generated.DestinationCreate;
-import io.airbyte.api.client2.model.generated.DestinationDefinitionCreate;
-import io.airbyte.api.client2.model.generated.DestinationDefinitionIdWithWorkspaceId;
-import io.airbyte.api.client2.model.generated.DestinationDefinitionRead;
-import io.airbyte.api.client2.model.generated.DestinationDefinitionSpecificationRead;
-import io.airbyte.api.client2.model.generated.DestinationDefinitionUpdate;
-import io.airbyte.api.client2.model.generated.DestinationIdRequestBody;
-import io.airbyte.api.client2.model.generated.DestinationRead;
-import io.airbyte.api.client2.model.generated.DestinationSyncMode;
-import io.airbyte.api.client2.model.generated.JobConfigType;
-import io.airbyte.api.client2.model.generated.JobDebugInfoRead;
-import io.airbyte.api.client2.model.generated.JobIdRequestBody;
-import io.airbyte.api.client2.model.generated.JobInfoRead;
-import io.airbyte.api.client2.model.generated.JobListForWorkspacesRequestBody;
-import io.airbyte.api.client2.model.generated.JobListRequestBody;
-import io.airbyte.api.client2.model.generated.JobRead;
-import io.airbyte.api.client2.model.generated.JobStatus;
-import io.airbyte.api.client2.model.generated.JobWithAttemptsRead;
-import io.airbyte.api.client2.model.generated.ListResourcesForWorkspacesRequestBody;
-import io.airbyte.api.client2.model.generated.NamespaceDefinitionType;
-import io.airbyte.api.client2.model.generated.NonBreakingChangesPreference;
-import io.airbyte.api.client2.model.generated.OperationCreate;
-import io.airbyte.api.client2.model.generated.OperationIdRequestBody;
-import io.airbyte.api.client2.model.generated.OperationRead;
-import io.airbyte.api.client2.model.generated.OperatorConfiguration;
-import io.airbyte.api.client2.model.generated.OperatorNormalization;
-import io.airbyte.api.client2.model.generated.OperatorType;
-import io.airbyte.api.client2.model.generated.OperatorWebhook;
-import io.airbyte.api.client2.model.generated.OperatorWebhookDbtCloud;
-import io.airbyte.api.client2.model.generated.Pagination;
-import io.airbyte.api.client2.model.generated.SchemaChangeBackfillPreference;
-import io.airbyte.api.client2.model.generated.SourceCreate;
-import io.airbyte.api.client2.model.generated.SourceDefinitionCreate;
-import io.airbyte.api.client2.model.generated.SourceDefinitionIdRequestBody;
-import io.airbyte.api.client2.model.generated.SourceDefinitionIdWithWorkspaceId;
-import io.airbyte.api.client2.model.generated.SourceDefinitionRead;
-import io.airbyte.api.client2.model.generated.SourceDefinitionSpecificationRead;
-import io.airbyte.api.client2.model.generated.SourceDefinitionUpdate;
-import io.airbyte.api.client2.model.generated.SourceDiscoverSchemaRead;
-import io.airbyte.api.client2.model.generated.SourceDiscoverSchemaRequestBody;
-import io.airbyte.api.client2.model.generated.SourceIdRequestBody;
-import io.airbyte.api.client2.model.generated.SourceRead;
-import io.airbyte.api.client2.model.generated.SourceReadList;
-import io.airbyte.api.client2.model.generated.StreamStatusListRequestBody;
-import io.airbyte.api.client2.model.generated.StreamStatusReadList;
-import io.airbyte.api.client2.model.generated.SyncMode;
-import io.airbyte.api.client2.model.generated.WebBackendConnectionRead;
-import io.airbyte.api.client2.model.generated.WebBackendConnectionRequestBody;
-import io.airbyte.api.client2.model.generated.WebBackendConnectionUpdate;
-import io.airbyte.api.client2.model.generated.WebBackendOperationCreateOrUpdate;
-import io.airbyte.api.client2.model.generated.WebhookConfigWrite;
-import io.airbyte.api.client2.model.generated.WorkspaceCreateWithId;
-import io.airbyte.api.client2.model.generated.WorkspaceIdRequestBody;
-import io.airbyte.api.client2.model.generated.WorkspaceRead;
-import io.airbyte.api.client2.model.generated.WorkspaceUpdate;
+import io.airbyte.api.client.AirbyteApiClient;
+import io.airbyte.api.client.model.generated.ActorDefinitionRequestBody;
+import io.airbyte.api.client.model.generated.ActorType;
+import io.airbyte.api.client.model.generated.AirbyteCatalog;
+import io.airbyte.api.client.model.generated.AirbyteStream;
+import io.airbyte.api.client.model.generated.AirbyteStreamAndConfiguration;
+import io.airbyte.api.client.model.generated.AirbyteStreamConfiguration;
+import io.airbyte.api.client.model.generated.AttemptInfoRead;
+import io.airbyte.api.client.model.generated.CheckConnectionRead;
+import io.airbyte.api.client.model.generated.ConnectionCreate;
+import io.airbyte.api.client.model.generated.ConnectionIdRequestBody;
+import io.airbyte.api.client.model.generated.ConnectionRead;
+import io.airbyte.api.client.model.generated.ConnectionReadList;
+import io.airbyte.api.client.model.generated.ConnectionScheduleData;
+import io.airbyte.api.client.model.generated.ConnectionScheduleType;
+import io.airbyte.api.client.model.generated.ConnectionState;
+import io.airbyte.api.client.model.generated.ConnectionStatus;
+import io.airbyte.api.client.model.generated.ConnectionUpdate;
+import io.airbyte.api.client.model.generated.CustomDestinationDefinitionCreate;
+import io.airbyte.api.client.model.generated.CustomSourceDefinitionCreate;
+import io.airbyte.api.client.model.generated.DestinationCreate;
+import io.airbyte.api.client.model.generated.DestinationDefinitionCreate;
+import io.airbyte.api.client.model.generated.DestinationDefinitionIdWithWorkspaceId;
+import io.airbyte.api.client.model.generated.DestinationDefinitionRead;
+import io.airbyte.api.client.model.generated.DestinationDefinitionSpecificationRead;
+import io.airbyte.api.client.model.generated.DestinationDefinitionUpdate;
+import io.airbyte.api.client.model.generated.DestinationIdRequestBody;
+import io.airbyte.api.client.model.generated.DestinationRead;
+import io.airbyte.api.client.model.generated.DestinationSyncMode;
+import io.airbyte.api.client.model.generated.JobConfigType;
+import io.airbyte.api.client.model.generated.JobDebugInfoRead;
+import io.airbyte.api.client.model.generated.JobIdRequestBody;
+import io.airbyte.api.client.model.generated.JobInfoRead;
+import io.airbyte.api.client.model.generated.JobListForWorkspacesRequestBody;
+import io.airbyte.api.client.model.generated.JobListRequestBody;
+import io.airbyte.api.client.model.generated.JobRead;
+import io.airbyte.api.client.model.generated.JobStatus;
+import io.airbyte.api.client.model.generated.JobWithAttemptsRead;
+import io.airbyte.api.client.model.generated.ListResourcesForWorkspacesRequestBody;
+import io.airbyte.api.client.model.generated.NamespaceDefinitionType;
+import io.airbyte.api.client.model.generated.NonBreakingChangesPreference;
+import io.airbyte.api.client.model.generated.OperationCreate;
+import io.airbyte.api.client.model.generated.OperationIdRequestBody;
+import io.airbyte.api.client.model.generated.OperationRead;
+import io.airbyte.api.client.model.generated.OperatorConfiguration;
+import io.airbyte.api.client.model.generated.OperatorNormalization;
+import io.airbyte.api.client.model.generated.OperatorType;
+import io.airbyte.api.client.model.generated.OperatorWebhook;
+import io.airbyte.api.client.model.generated.OperatorWebhookDbtCloud;
+import io.airbyte.api.client.model.generated.Pagination;
+import io.airbyte.api.client.model.generated.SchemaChangeBackfillPreference;
+import io.airbyte.api.client.model.generated.SourceCreate;
+import io.airbyte.api.client.model.generated.SourceDefinitionCreate;
+import io.airbyte.api.client.model.generated.SourceDefinitionIdRequestBody;
+import io.airbyte.api.client.model.generated.SourceDefinitionIdWithWorkspaceId;
+import io.airbyte.api.client.model.generated.SourceDefinitionRead;
+import io.airbyte.api.client.model.generated.SourceDefinitionSpecificationRead;
+import io.airbyte.api.client.model.generated.SourceDefinitionUpdate;
+import io.airbyte.api.client.model.generated.SourceDiscoverSchemaRead;
+import io.airbyte.api.client.model.generated.SourceDiscoverSchemaRequestBody;
+import io.airbyte.api.client.model.generated.SourceIdRequestBody;
+import io.airbyte.api.client.model.generated.SourceRead;
+import io.airbyte.api.client.model.generated.SourceReadList;
+import io.airbyte.api.client.model.generated.StreamStatusListRequestBody;
+import io.airbyte.api.client.model.generated.StreamStatusReadList;
+import io.airbyte.api.client.model.generated.SyncMode;
+import io.airbyte.api.client.model.generated.WebBackendConnectionRead;
+import io.airbyte.api.client.model.generated.WebBackendConnectionRequestBody;
+import io.airbyte.api.client.model.generated.WebBackendConnectionUpdate;
+import io.airbyte.api.client.model.generated.WebBackendOperationCreateOrUpdate;
+import io.airbyte.api.client.model.generated.WebhookConfigWrite;
+import io.airbyte.api.client.model.generated.WorkspaceCreateWithId;
+import io.airbyte.api.client.model.generated.WorkspaceIdRequestBody;
+import io.airbyte.api.client.model.generated.WorkspaceRead;
+import io.airbyte.api.client.model.generated.WorkspaceUpdate;
 import io.airbyte.commons.json.Jsons;
 import io.airbyte.commons.resources.MoreResources;
 import io.airbyte.commons.string.Strings;
@@ -548,12 +548,14 @@ public class AcceptanceTestHarness {
   }
 
   public SourceDiscoverSchemaRead discoverSourceSchemaWithId(final UUID sourceId) throws IOException {
-    final var result =
-        apiClient.getSourceApi().discoverSchemaForSource(new SourceDiscoverSchemaRequestBody(sourceId, null, true, null, null));
-    if (result.getCatalog() == null) {
-      throw new RuntimeException("no catalog returned, retrying...");
-    }
-    return result;
+    return Failsafe.with(retryPolicy).get(() -> {
+      final var result =
+          apiClient.getSourceApi().discoverSchemaForSource(new SourceDiscoverSchemaRequestBody(sourceId, null, true, null, null));
+      if (result.getCatalog() == null) {
+        throw new RuntimeException("no catalog returned, retrying...");
+      }
+      return result;
+    });
   }
 
   // Run check Connection workflow.
@@ -1033,7 +1035,7 @@ public class AcceptanceTestHarness {
         getSourceDbConfig());
   }
 
-  public SourceRead createSource(final String name, final UUID workspaceId, final UUID sourceDefId, final JsonNode sourceConfig) throws IOException {
+  public SourceRead createSource(final String name, final UUID workspaceId, final UUID sourceDefId, final JsonNode sourceConfig) {
     final SourceRead source = Failsafe.with(retryPolicy).get(() -> apiClient.getSourceApi().createSource(
         new SourceCreate(
             sourceDefId,
@@ -1045,11 +1047,11 @@ public class AcceptanceTestHarness {
     return source;
   }
 
-  public CheckConnectionRead checkSource(final UUID sourceId) throws IOException {
+  public CheckConnectionRead checkSource(final UUID sourceId) {
     return Failsafe.with(retryPolicy).get(() -> apiClient.getSourceApi().checkConnectionToSource(new SourceIdRequestBody(sourceId)));
   }
 
-  public UUID getPostgresSourceDefinitionId() throws IOException {
+  public UUID getPostgresSourceDefinitionId() {
     return Failsafe.with(retryPolicy).get(() -> apiClient.getSourceDefinitionApi().listSourceDefinitions().getSourceDefinitions()
         .stream()
         .filter(sourceRead -> "postgres".equalsIgnoreCase(sourceRead.getName()))
@@ -1062,7 +1064,7 @@ public class AcceptanceTestHarness {
     return getPostgresDestinationDefinition().getDestinationDefinitionId();
   }
 
-  public DestinationDefinitionRead getPostgresDestinationDefinition() throws IOException {
+  public DestinationDefinitionRead getPostgresDestinationDefinition() {
     return Failsafe.with(retryPolicy).get(() -> apiClient.getDestinationDefinitionApi().listDestinationDefinitions().getDestinationDefinitions()
         .stream()
         .filter(destRead -> "postgres".equalsIgnoreCase(destRead.getName()))

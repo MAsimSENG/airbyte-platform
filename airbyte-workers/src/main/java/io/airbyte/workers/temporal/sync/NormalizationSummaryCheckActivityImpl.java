@@ -18,12 +18,14 @@ import io.airbyte.metrics.lib.MetricClientFactory;
 import io.airbyte.metrics.lib.OssMetricsRegistry;
 import io.temporal.activity.Activity;
 import jakarta.inject.Singleton;
+import java.io.IOException;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
+import org.openapitools.client.infrastructure.ClientException;
 
 /**
  * NormalizationSummaryCheckActivityImpl.
@@ -54,10 +56,8 @@ public class NormalizationSummaryCheckActivityImpl implements NormalizationSumma
 
     final AttemptNormalizationStatusReadList AttemptNormalizationStatusReadList;
     try {
-      AttemptNormalizationStatusReadList = AirbyteApiClient.retryWithJitter(
-          () -> airbyteApiClient.getJobsApi().getAttemptNormalizationStatusesForJob(new JobIdRequestBody().id(jobId)),
-          "get normalization statuses");
-    } catch (final Exception e) {
+      AttemptNormalizationStatusReadList = airbyteApiClient.getJobsApi().getAttemptNormalizationStatusesForJob(new JobIdRequestBody(jobId));
+    } catch (final ClientException | IOException e) {
       throw Activity.wrap(e);
     }
     final AtomicLong totalRecordsCommitted = new AtomicLong(0L);
